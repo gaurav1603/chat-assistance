@@ -95,7 +95,46 @@ export class OpenAIAgent implements AIAgent{
         search for recent topics will result in an incorrent answer.
         `;
     };
-    private handleMessage=async()=>{
-        
+    // todo
+    private handleMessage=async(e:Event<DefaultGenerics>)=>{
+        if(!this.openai || !this.openAiThread || !this.assistant){
+            console.log("OpenAI not initialized")
+            return;
+        }
+        if(!e.message || e.message.ai_generated){
+            return;
+        }
+        const message=e.message.text
+        if(!message)return;
+        this.lastInteractionTs=Date.now()
+        const writingTask=(e.message.custom as {
+            writingTask?:string
+        })?.writingTask;
+        const context=writingTask?`Writing Task :${writingTask}`:undefined;
+        const instructions=this.getWritingAssitantPrompt(context)
+        await this.openai.beta.threads.create(
+            this.openAiThread.id,{
+                role:"user",
+                content:message
+            }
+        )
+        const {message:channelMessage}=await this.channel.sendMessage({
+            text:"",
+            ai_generated:true,
+        });
+        await this.channel.sendEvent({
+            type:"ai_indicator.update",
+            ai_state:"AI_STATE_THINKING",
+            cid:"channelMessage.cid",
+            message_id:"channelMessage.id"
+        })
+        const run=this.openai.beta.threads.createAndRunStream(
+            this.openAiThread.id
+        )
+    }
+    private removeHandler=(handlerToRemove:OpenAIResponseHandler)=>{
+        this.handlers=this.handlers.filter(
+            (handler)=>handler!==handlerToRemove
+        )
     }
 }
